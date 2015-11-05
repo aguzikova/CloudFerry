@@ -693,7 +693,7 @@ class Prerequisites(BasePrerequisites):
             return volume_ids
 
         def get_params_for_volume_creating(_volume):
-            params = ['display_name', 'size', 'imageRef']
+            params = ['display_name', 'size', 'imageRef', 'volume_type']
             if 'image' in _volume:
                 _volume['imageRef'] = self.get_image_id(_volume['image'])
             return {param: _volume[param] for param in params

@@ -206,10 +206,20 @@ snapshots = [
 # Cinder images to create/delete
 cinder_volumes = [
     {'display_name': 'cinder_volume1', 'size': 1},
+    {'display_name': 'cinder_volume1_nfs1', 'size': 1, 'volume_type': 'nfs1'},
+    {'display_name': 'cinder_volume1_nfs2', 'size': 1, 'volume_type': 'nfs2'},
     {'display_name': 'cinder_volume2', 'size': 1,
      'server_to_attach': 'server2', 'device': '/dev/vdb'},
+    {'display_name': 'cinder_volume2_nfs1', 'size': 1, 'volume_type': 'nfs1',
+     'server_to_attach': 'server3', 'device': '/dev/vdc'},
+    {'display_name': 'cinder_volume2_nfs2', 'size': 1, 'volume_type': 'nfs2',
+     'server_to_attach': 'server4', 'device': '/dev/vdd'},
     {'display_name': 'cinder_volume3', 'size': 1,
-     'user': 'test_volume_migration'}
+     'user': 'test_volume_migration'},
+    {'display_name': 'cinder_volume3_nfs1', 'size': 1, 'volume_type': 'nfs1',
+     'user': 'test_volume_migration'},
+    {'display_name': 'cinder_volume3_nfs2', 'size': 1, 'volume_type': 'nfs2',
+     'user': 'test_volume_migration'},
 ]
 
 cinder_volumes_from_images = [

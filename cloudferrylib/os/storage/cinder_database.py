@@ -33,7 +33,7 @@ class CinderStorage(cinder_storage.CinderStorage):
 
     """Migration strategy used with NFS backend
 
-    coppies data directly from database to database, avoiding creation of
+    copies data directly from database to database, avoiding creation of
     new volumes
 
     to use this strategy - specify cinder_migration_strategy in config as
