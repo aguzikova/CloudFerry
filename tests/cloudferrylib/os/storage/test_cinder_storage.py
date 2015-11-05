@@ -239,3 +239,11 @@ class CinderStorageTestCase(test.TestCase):
         self.assertRaises(Exception,
                           self.cinder_client.get_volume_path_iscsi,
                           'fake_vol_id')
+
+    def test_extract_host(self):
+        self.assertEqual('host.com',
+                         self.cinder_client.extract_host(
+                             'http://host.com/v1'))
+        self.assertEqual('host.com',
+                         self.cinder_client.extract_host(
+                             'http://host.com:8080/v1'))

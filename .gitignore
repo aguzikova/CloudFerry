@@ -11,3 +11,6 @@ snapshots
 build
 dist
 CloudFerry.egg-info
+.ropeproject
+.venv
+dump.sql

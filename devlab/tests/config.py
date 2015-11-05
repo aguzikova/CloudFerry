@@ -54,6 +54,8 @@ tenants = [
      'vms': [
          {'name': 'tn1server1', 'image': 'image1', 'flavor': 'flavorname2',
           'key_name': 'key1'},
+         {'name': 'tn1server1_nfs', 'image': 'image1', 'flavor': 'flavorname2',
+          'key_name': 'key1'},
          {'name': 'tn1server2', 'image': 'image1', 'flavor': 'flavorname1',
           'fip': True},
          {'name': 'server6', 'image': 'image1', 'flavor': 'del_flvr'}],
@@ -84,6 +86,10 @@ tenants = [
      'cinder_volumes': [
          {'display_name': 'tn1_volume1', 'size': 1,
           'server_to_attach': 'tn1server1', 'device': '/dev/vdb'},
+         {'display_name': 'tn1_volume1_nfs1', 'size': 1, 'volume_type': 'nfs1',
+          'server_to_attach': 'tn1server1_nfs', 'device': '/dev/vdb'},
+         {'display_name': 'tn1_volume1_nfs2', 'size': 1, 'volume_type': 'nfs2',
+          'server_to_attach': 'tn1server1_nfs', 'device': '/dev/vdc'},
          {'display_name': 'tn1_volume2', 'size': 1}
      ],
      'cinder_snapshots': [
@@ -114,7 +120,13 @@ tenants = [
      ],
      'cinder_volumes': [
          {'display_name': 'tn_volume1', 'size': 1,
-          'server_to_attach': 'tn2server1', 'device': '/dev/vdb'}
+          'server_to_attach': 'tn2server1', 'device': '/dev/vdb'},
+         {'display_name': 'tn_volume1_nfs1', 'size': 1,
+          'volume_type': 'nfs1', 'server_to_attach': 'tn2server1',
+          'device': '/dev/vdc'},
+         {'display_name': 'tn_volume1_nfs2', 'size': 1,
+          'volume_type': 'nfs2', 'server_to_attach': 'tn2server1',
+          'device': '/dev/vdd'},
      ],
      'unassociated_fip': 1
      },
@@ -230,7 +242,11 @@ vms = [
 
 vms_from_volumes = [
     {'name': 'server_from_volume', 'flavor': 'flavorname1',
-     'volume': 'volume_from_image'}
+     'volume': 'volume_from_image'},
+    {'name': 'server_from_volume_nfs1', 'flavor': 'flavorname1',
+     'volume': 'volume_from_image_nfs1'},
+    {'name': 'server_from_volume_nfs2', 'flavor': 'flavorname1',
+     'volume': 'volume_from_image_nfs2'},
 ]
 
 routers = [
@@ -247,14 +263,28 @@ snapshots = [
 # Cinder images to create/delete
 cinder_volumes = [
     {'display_name': 'cinder_volume1', 'size': 1},
+    {'display_name': 'cinder_volume1_nfs1', 'size': 1, 'volume_type': 'nfs1'},
+    {'display_name': 'cinder_volume1_nfs2', 'size': 1, 'volume_type': 'nfs2'},
     {'display_name': 'cinder_volume2', 'size': 1,
      'server_to_attach': 'server2', 'device': '/dev/vdb'},
+    {'display_name': 'cinder_volume2_nfs1', 'size': 1, 'volume_type': 'nfs1',
+     'server_to_attach': 'server3', 'device': '/dev/vdc'},
+    {'display_name': 'cinder_volume2_nfs2', 'size': 1, 'volume_type': 'nfs2',
+     'server_to_attach': 'server4', 'device': '/dev/vdd'},
     {'display_name': 'cinder_volume3', 'size': 1,
-     'user': 'test_volume_migration'}
+     'user': 'test_volume_migration'},
+    {'display_name': 'cinder_volume3_nfs1', 'size': 1, 'volume_type': 'nfs1',
+     'user': 'test_volume_migration'},
+    {'display_name': 'cinder_volume3_nfs2', 'size': 1, 'volume_type': 'nfs2',
+     'user': 'test_volume_migration'},
 ]
 
 cinder_volumes_from_images = [
-    {'display_name': 'volume_from_image', 'size': 1, 'image': 'image1'}
+    {'display_name': 'volume_from_image', 'size': 1, 'image': 'image1'},
+    {'display_name': 'volume_from_image_nfs1', 'volume_type': 'nfs1',
+     'size': 1, 'image': 'image1'},
+    {'display_name': 'volume_from_image_nfs2', 'volume_type': 'nfs2',
+     'size': 1, 'image': 'image1'},
 ]
 
 # Cinder snapshots to create/delete
@@ -272,6 +302,7 @@ vm_states = [
     {'name': 'server5', 'state': 'resize'},
     {'name': 'server6', 'state': 'active'},
     {'name': 'tn1server1', 'state': 'active'},
+    {'name': 'tn1server1_nfs', 'state': 'active'},
     {'name': 'tn1server2', 'state': 'active'},
     {'name': 'tn2server1', 'state': 'active'},
     {'name': 'tn4server1', 'state': 'active'}
