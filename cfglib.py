@@ -172,6 +172,8 @@ migrate_opts = [
                      'migration process', default=False),
     cfg.BoolOpt('hide_ssl_warnings', default=False,
                 help="Don't show ssl warnings"),
+    cfg.IntOpt('remote_run_attempts', default=5,
+               help='Number of retries for remote command execution over SSH'),
 ]
 
 mail = cfg.OptGroup(name='mail',

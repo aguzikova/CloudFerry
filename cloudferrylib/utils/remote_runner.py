@@ -72,3 +72,16 @@ class RemoteRunner(object):
             self.run(cmd, **kwargs)
         finally:
             self.ignore_errors = ignore_errors_original
+
+    def run_repeat_on_errors(self, cmd):
+        done = False
+        attempts = 0
+
+        while not done:
+            try:
+                attempts += 1
+                self.run(cmd)
+                done = True
+            except RemoteExecutionError as e:
+                if attempts >= cfglib.CONF.migrate.remote_run_attempts:
+                    raise e

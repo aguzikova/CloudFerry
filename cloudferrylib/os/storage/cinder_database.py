@@ -33,7 +33,7 @@ class CinderStorage(cinder_storage.CinderStorage):
 
     """Migration strategy used with NFS backend
 
-    coppies data directly from database to database, avoiding creation of
+    copies data directly from database to database, avoiding creation of
     new volumes
 
     to use this strategy - specify cinder_migration_strategy in config as
@@ -127,7 +127,7 @@ class CinderStorage(cinder_storage.CinderStorage):
         # cached property
         if not hasattr(self, 'hosts'):
             self.hosts = [i.host for i in self.cinder_client.services.list(
-                binary=CINDER_VOLUME)]
+                binary=CINDER_VOLUME) if i.state == 'up']
         # return host by "round-robin" rule
         if not hasattr(self, "host_counter"):
             self.host_counter = 0
@@ -241,8 +241,6 @@ class CinderStorage(cinder_storage.CinderStorage):
                     username=entry[USER_ID],
                     default=self.config.cloud.user)
                 entry[USER_ID] = user.id
-            if HOST in entry:
-                entry[HOST] = self.get_volume_host()
 
     def deploy(self, data):
         """ Reads serialized data and writes it to database """

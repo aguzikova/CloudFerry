@@ -19,6 +19,8 @@ from cinderclient import exceptions as cinder_exc
 from cloudferrylib.base import storage
 from cloudferrylib.utils import utils as utl
 
+import re
+
 LOG = utl.get_log(__name__)
 
 AVAILABLE = 'available'
@@ -59,6 +61,20 @@ class CinderStorage(storage.Storage):
             cacert=self.config.cloud.cacert,
             insecure=self.config.cloud.insecure
         )
+
+    def get_endpoint(self):
+        return self.identity_client.get_endpoint_by_service_type(
+            service_type='volume',
+            endpoint_type='publicURL',
+        )
+
+    def get_endpoint_host(self):
+        return self.extract_host(self.get_endpoint())
+
+    @staticmethod
+    def extract_host(url):
+        m = re.search('//([^:^/]*)', url)
+        return m.group(1)
 
     def read_info(self, **kwargs):
         info = {utl.VOLUMES_TYPE: {}}

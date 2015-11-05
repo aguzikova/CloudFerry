@@ -11,3 +11,16 @@ snapshots
 build
 dist
 CloudFerry.egg-info
+.ropeproject
+.venv
+dump.sql
+rerun.rc
+configs/filter.yaml
+configuration.ini
+configuration.ini.bak
+devlab/config.ini
+devlab/config.ini.bak
+devlab/provision/devstack/local.conf
+devlab/tests/configuration.ini
+devlab/tests/configuration.ini.bak
+devlab/tests/pre_migration_vm_states.json
