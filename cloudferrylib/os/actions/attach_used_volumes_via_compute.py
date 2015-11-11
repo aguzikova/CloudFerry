@@ -30,6 +30,7 @@ class AttachVolumesCompute(action.Action):
             for vol in instance[utl.META_INFO][utl.VOLUME_BODY]:
                 if storage_res.get_status(
                         vol['volume']['id']) != 'in-use':
+                    import ipdb; ipdb.set_trace()
                     compute_res.attach_volume_to_instance(instance, vol)
                     storage_res.wait_for_status(vol['volume']['id'],
                                                 storage_res.get_status,

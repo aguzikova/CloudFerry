@@ -847,6 +847,9 @@ class NovaCompute(compute.Compute):
             "Not implemented yet function for detect mac address")
 
     def attach_volume_to_instance(self, instance, volume):
+        print 'TRY create server volume:', (instance['instance']['id'],
+                                            volume['volume']['id'],
+                                            volume['volume']['device'])
         self.nova_client.volumes.create_server_volume(
             instance['instance']['id'],
             volume['volume']['id'],
