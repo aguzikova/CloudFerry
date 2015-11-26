@@ -111,10 +111,14 @@ def add_to_database(cursor, table, entries):
     if not entries:
         return
     keys = entries[0].keys()
+    reserved = ['key']
+    for key in reserved:
+        if key in keys:
+            keys[keys.index(key)] = '%s.%s' % (table, key)
     query = "INSERT INTO {table} ({keys}) VALUES ({values})".format(
-            keys=",".join(keys),
-            table=table,
-            values=",".join(["%s" for _ in keys]))
+        keys=",".join(keys),
+        table=table,
+        values=",".join(["%s" for _ in keys]))
 
     LOG.debug(query)
     cursor.executemany(query, [i.values() for i in entries])
@@ -150,6 +154,7 @@ class CinderStorage(cinder_storage.CinderStorage):
             'reservations',
             'volume_types',
             'volume_type_extra_specs',
+            'volume_glance_metadata',
         ]
         super(CinderStorage, self).__init__(config, cloud)
 
@@ -221,9 +226,8 @@ class CinderStorage(cinder_storage.CinderStorage):
         if filtering_enabled:
             fltr = self.get_volume_filter().get_tenant_filter()
             quotas = [q for q in quotas if fltr(q)]
-            if fltr:
-                LOG.info("Filtered %s: %s", table_name,
-                         ", ".join((str(v) for v in quotas)))
+            LOG.info("Filtered %s: %s", table_name,
+                     ", ".join((str(v) for v in quotas)))
         return quotas
 
     def _filter(self, table, result):
@@ -309,12 +313,9 @@ class CinderStorage(cinder_storage.CinderStorage):
         primary_key, auto_increment = get_key_and_auto_increment(
             cursor, table_name)
         data_in_database = self.list_of_dicts_for_table(table_name)
-        unique_entries, duplicated_pk = filter_data(data_in_database,
-                                                    table_list_of_dicts,
-                                                    primary_key,
-                                                    auto_increment,
-                                                    table_name,
-                                                    )
+        unique_entries, duplicated_pk = filter_data(
+            data_in_database, table_list_of_dicts, primary_key,
+            auto_increment, table_name)
         add_to_database(cursor, table_name, unique_entries)
         add_to_database(cursor, table_name, duplicated_pk)
         cursor.close()
@@ -350,6 +351,8 @@ class CinderStorage(cinder_storage.CinderStorage):
                 entry[USER_ID] = user.id
 
     def deploy(self, data):
-        """ Reads serialized data and writes it to database """
-        for table_name, table_data in jsondate.loads(data).items():
-            self.deploy_data_to_table(table_name, table_data)
+        """ Read serialized data and writes it to database. """
+        data = jsondate.loads(data)
+        for table_name in self.list_of_tables:
+            if table_name in data:
+                self.deploy_data_to_table(table_name, data[table_name])

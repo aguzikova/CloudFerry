@@ -15,6 +15,7 @@
 
 
 import abc
+import copy
 from cloudferrylib.base.action import action
 from cloudferrylib.base.exception import AbortMigrationError
 from cloudferrylib.utils import remote_runner
@@ -173,6 +174,75 @@ class WriteVolumesDb(CinderDatabaseInteraction):
         self.dst_volume_types = None
         self.path_map = None
         self.mount_all = {}
+        self.img_map = None
+
+    def _skip_existing_volumes(self):
+        res = []
+        dst_ids = [v['id'] for v in self.data[DST]['volumes']]
+        for v in self.data[SRC]['volumes']:
+            if v['id'] in dst_ids:
+                LOG.warning('Volume %s existing, skipping migration.', v['id'])
+            else:
+                res.append(v)
+        self.data[SRC]['volumes'] = res
+
+    def read_images_info(self, pos):
+        """Read images info.
+
+        :return: list
+
+        """
+        res = self.cloud[pos][CLOUD].resources.get(utils.IMAGE_RESOURCE)
+        return res.read_info()['images'].values()
+
+    def _image_map(self, img_id):
+        if self.img_map is not None:
+            return self.img_map.get(img_id, None)
+
+        self.img_map = {}
+
+        imgs, keystone = {}, {}
+        for pos in SRC, DST:
+            keystone[pos] = self.cloud[pos][CLOUD].resources.get(
+                utils.IDENTITY_RESOURCE)
+            imgs[pos] = self.read_images_info(pos)
+
+        for img in imgs[SRC]:
+            for dst_img in imgs[DST]:
+                skip_fields = ['id', 'resource', 'owner']
+                for f in img['image'].keys():
+                    if f not in skip_fields and \
+                            img['image'][f] != dst_img['image'][f]:
+                        print img['image'][f], ' VS ', dst_img['image'][f]
+                        break
+                    if f == 'owner' and \
+                            keystone[SRC].try_get_tenant_name_by_id(
+                                img['image'][f]) != \
+                            keystone[DST].try_get_tenant_name_by_id(
+                                dst_img['image'][f]):
+                        break
+                else:
+                    self.img_map[img['image']['id']] = dst_img['image']['id']
+        return self.img_map.get(img_id, None)
+
+    def fix_glance_metadata(self, data):
+        """Fix volume_glance_metadata table.
+
+        Replace src image ids by correspoing dst image ids.
+
+        :return: dict
+
+        """
+        data = copy.deepcopy(data)
+        metadata = data.get('volume_glance_metadata', {})
+        vol_ids = [v['id'] for v in data['volumes']]
+        metadata = [m for m in metadata if m['volume_id'] in vol_ids]
+
+        for m in metadata:
+            if m['key'] == 'image_id':
+                m['value'] = self._image_map(m['value'])
+        data['volume_glance_metadata'] = metadata
+        return data
 
     def run(self, *args, **kwargs):
         """Run WriteVolumesDb Action."""
@@ -201,11 +271,14 @@ class WriteVolumesDb(CinderDatabaseInteraction):
         self.data[DST] = jsondate.loads(
             self.cloud[DST][RES].read_db_info(**search_opts))
 
+        self._skip_existing_volumes()
+
         LOG.debug('Cloud info: %s', str(self.cloud))
 
         self._copy_volumes()
 
         self.data[SRC] = _modify_data(self.data[SRC])
+        self.data[SRC] = self.fix_glance_metadata(self.data[SRC])
         self.cloud[DST][RES].deploy(jsondate.dumps(self.data[SRC]))
 
     def _run_cmd(self, cloud, cmd):
@@ -281,16 +354,16 @@ class WriteVolumesDb(CinderDatabaseInteraction):
         cmd = (
             'rm -f %s'
         ) % filepath
-        LOG.debug("Cleaning %s", filepath)
+        LOG.info("Cleaning %s", filepath)
         self.run_repeat_on_errors(cloud, cmd)
 
     def _rsync_if_enough_space(self, src_size, src, dst):
         dst_free_space = self.free_space(self.cloud[DST], dst)
         if dst_free_space > src_size:
-            LOG.debug("Enough space found on %s", dst)
+            LOG.info("Enough space found on %s", dst)
             self._run_rsync(src, dst)
             return True
-        LOG.debug("No enough space on %s", dst)
+        LOG.warning("No enough space on %s", dst)
 
     def checksum(self, position, filepath):
         """
@@ -318,7 +391,7 @@ class WriteVolumesDb(CinderDatabaseInteraction):
             LOG.debug("Destination file size = %d", dst_size)
             dst = os.path.dirname(dstfile)
             if self.checksum(SRC, src) == self.checksum(DST, dstfile):
-                LOG.debug("Destination file is up-to-date")
+                LOG.info("Destination file %s is up-to-date", dstfile)
                 return dst
             if self._rsync_if_enough_space(src_size, src, dst):
                 return dst
@@ -546,6 +619,9 @@ class WriteVolumesDb(CinderDatabaseInteraction):
         vt_map = self._vt_map()
 
         for v in self.data[SRC]['volumes']:
+            LOG.info('Migrating volume: %s(%s)',
+                     v.get('display_name', ''), v['id'])
+
             volume_type_id = v.get('volume_type_id', None)
             srcpaths = self._paths(SRC, volume_type_id)
             LOG.debug('srcpaths: %s', str(srcpaths))
@@ -565,7 +641,7 @@ class WriteVolumesDb(CinderDatabaseInteraction):
                 raise AbortMigrationError(
                     'No SRC volume file found for %s[%s]'
                     % (v.get('display_name', None), v['id']))
-            LOG.debug('SRC volume file: %s', str(src))
+            LOG.info('Copying volume file: %s', str(src))
             dst = self._rsync(src, dstpaths, v)
 
             v['provider_location'] = self._dir_to_provider(dst)
