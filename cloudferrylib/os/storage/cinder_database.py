@@ -37,10 +37,25 @@ QUOTA_TABLES = (
     'quota_classes',
     'quota_usages',
 )
+METADATA_TABLES = (
+    'volume_metadata',
+    'volume_glance_metadata',
+)
 
 # SKIPPING_STATUSES = ['creating', 'error', 'error_deleting',
 # 'error_attaching']
 VALID_STATUSES = ['available', 'in-use', 'attaching', 'detaching']
+
+
+def remove_ids(entries):
+    """Remove ID column from entries.
+
+    :return: list
+
+    """
+    for entry in entries:
+        del entry[ID]
+    return entries
 
 
 def skip_invalid_status_volumes(volumes):
@@ -76,6 +91,35 @@ def get_key_and_auto_increment(cursor, table):
     return primary_key, auto_increment
 
 
+def filter_uniq(existing_data, data_to_be_added, table_name):
+    """ Ignore primary key 'id', filter unique entries.
+
+    :return: (unique_entries)
+
+    """
+
+    unique_entries = []
+    for ex in existing_data:
+        ex.pop('id')
+
+    def identical(candidate, ex):
+        x_ion = list(set(candidate.keys()) & set(ex.keys()))
+        return (
+            {i: candidate[i] for i in candidate if i in x_ion} ==
+            {i: ex[i] for i in ex if i in x_ion}
+        )
+
+    for candidate in data_to_be_added:
+        key = candidate.pop('id')
+        for ex in existing_data:
+            if identical(candidate, ex):
+                LOG.debug("duplicate in table %s for id=%s", table_name, key)
+                break
+        else:
+            unique_entries.append(candidate)
+    return unique_entries
+
+
 def filter_data(existing_data, data_to_be_added, primary_key,
                 auto_increment, table_name):
     """ Handle duplicates in database.
@@ -83,7 +127,11 @@ def filter_data(existing_data, data_to_be_added, primary_key,
     :return: (unique_entries, duplicate_pk)
 
     """
+    if table_name in QUOTA_TABLES or table_name in METADATA_TABLES:
+        return filter_uniq(existing_data, data_to_be_added, table_name), []
+
     existing_hash = {i.get(primary_key): i for i in existing_data}
+
     unique_entries, duplicated_pk = [], []
     for candidate in data_to_be_added:
         key = candidate[primary_key]
@@ -110,14 +158,18 @@ def add_to_database(cursor, table, entries):
     """ Insert dict to database. """
     if not entries:
         return
-    keys = entries[0].keys()
-    query = "INSERT INTO {table} ({keys}) VALUES ({values})".format(
-            keys=",".join(keys),
-            table=table,
-            values=",".join(["%s" for _ in keys]))
-
-    LOG.debug(query)
-    cursor.executemany(query, [i.values() for i in entries])
+    for entry in entries:
+        keys = entry.keys()
+        query = (
+            "INSERT INTO %s (%s) VALUES (%s)" % (
+                table,
+                ",".join(keys),
+                ",".join(["%s" for _ in keys])
+            )
+        )
+        values = [str(entry[k]) for k in keys]
+        LOG.debug(query, *values)
+        cursor.execute(query, values)
 
 
 class CinderStorage(cinder_storage.CinderStorage):
@@ -221,9 +273,8 @@ class CinderStorage(cinder_storage.CinderStorage):
         if filtering_enabled:
             fltr = self.get_volume_filter().get_tenant_filter()
             quotas = [q for q in quotas if fltr(q)]
-            if fltr:
-                LOG.info("Filtered %s: %s", table_name,
-                         ", ".join((str(v) for v in quotas)))
+            LOG.info("Filtered %s: %s", table_name,
+                     ", ".join((str(v) for v in quotas)))
         return quotas
 
     def _filter(self, table, result):
@@ -234,14 +285,22 @@ class CinderStorage(cinder_storage.CinderStorage):
             result = self._filter_quotas_list(table, result)
         return result
 
+    def select_from_table(self, table):
+        """Select * from table.
+
+        :return: query
+
+        """
+        sql = ("SELECT * from {table}").format(table=table)
+        return self.mysql_connector.execute(sql)
+
     def get_table(self, table):
         """Get table rows.
 
         :return: list
 
         """
-        sql = ("SELECT * from {table}").format(table=table)
-        query = self.mysql_connector.execute(sql)
+        query = self.select_from_table(table)
         column_names = query.keys()
         result = [dict(zip(column_names, row)) for row in query]
         return result
@@ -254,7 +313,7 @@ class CinderStorage(cinder_storage.CinderStorage):
         self.table = table
         # check if result has "deleted" column
         if DELETED in column_names:
-            result = [a for a in result if a.get(DELETED) == 0]
+            result = [a for a in result if not a.get(DELETED)]
 
         result = self._filter(table, result)
 
@@ -308,6 +367,8 @@ class CinderStorage(cinder_storage.CinderStorage):
         cursor = connection.cursor(dictionary=True)
         primary_key, auto_increment = get_key_and_auto_increment(
             cursor, table_name)
+        LOG.debug('Primary key of %s: %s', table_name, primary_key)
+        LOG.debug('Auto increment of %s: %s', table_name, primary_key)
         data_in_database = self.list_of_dicts_for_table(table_name)
         unique_entries, duplicated_pk = filter_data(data_in_database,
                                                     table_list_of_dicts,
@@ -350,6 +411,6 @@ class CinderStorage(cinder_storage.CinderStorage):
                 entry[USER_ID] = user.id
 
     def deploy(self, data):
-        """ Reads serialized data and writes it to database """
+        """ Read serialized data and writes it to database. """
         for table_name, table_data in jsondate.loads(data).items():
             self.deploy_data_to_table(table_name, table_data)

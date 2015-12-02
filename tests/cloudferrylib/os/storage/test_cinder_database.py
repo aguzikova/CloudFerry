@@ -115,6 +115,8 @@ class CinderDatabaseTestCase(test.TestCase):
 
         self.fake_cloud.resources = dict(identity=self.identity_mock,
                                          compute=self.compute_mock)
+        self.fake_cloud.mysql_connector = mock.MagicMock()
+
         self.cinder_client = cinder_database.CinderStorage(FAKE_CONFIG,
                                                            self.fake_cloud)
         self.mock_client().volumes.get.return_value = _volume()
@@ -138,24 +140,44 @@ class CinderDatabaseTestCase(test.TestCase):
                                                  cacert='', insecure=False)
         self.assertEqual(self.mock_client(), client)
 
+    @mock.patch('jsondate.loads', mock.MagicMock(side_effect=lambda x: x))
+    @mock.patch('jsondate.dumps', mock.MagicMock(side_effect=lambda x: x))
     def test_read_db_info(self):
-        fake_volumes = [
-            _volume(uuid='1', tenant=TN1['id'], status='in-use'),
-            _volume(uuid='2', tenant=TN2['id'], status='available'),
-            _volume(uuid='3', tenant=TN2['id'], status='error'),
+        fake_volume_cols = [
+            'id',
+            'project_id',
+            'status',
         ]
-        fake_quotas = [
-            _quota(tenant=TN1['id']),
-            _quota(tenant=TN2['id']),
+        fake_volume_rows = [
+            ['1', TN1['id'], 'in-use'],
+            ['2', TN2['id'], 'available'],
+            ['3', TN2['id'], 'error'],
         ]
-        fake_quota_usages = [
-            _quota_usage(tenant=TN1['id']),
-            _quota_usage(tenant=TN2['id']),
+        fake_quota_cols = [
+            'id',
+            'project_id',
         ]
-        fake_tables = {
-            'volumes': fake_volumes,
-            'quotas': fake_quotas,
-            'quota_usages': fake_quota_usages,
+        fake_quota_rows = [
+            [DONT_CARE, TN1['id']],
+            [DONT_CARE, TN2['id']],
+        ]
+        fake_quota_usage_cols = [
+            'id',
+            'project_id',
+        ]
+        fake_quota_usage_rows = [
+            [DONT_CARE, TN2['id']],
+            [DONT_CARE, TN1['id']],
+        ]
+        fake_cols = {
+            'volumes': fake_volume_cols,
+            'quotas': fake_quota_cols,
+            'quota_usages': fake_quota_usage_cols,
+        }
+        fake_rows = {
+            'volumes': fake_volume_rows,
+            'quotas': fake_quota_rows,
+            'quota_usages': fake_quota_usage_rows,
         }
         expected_volumes = [
             _volume(uuid='1', tenant=TN1['name'], status='in-use'),
@@ -172,10 +194,26 @@ class CinderDatabaseTestCase(test.TestCase):
             'quota_usages': expected_quota_usages,
         }
 
-        def get_table(table):
-            return fake_tables.get(table, {})
+        def select_from_table(table):
+            class FakeProxyQuery(object):
+                def __init__(self, cols, rows):
+                    self.cols = cols
+                    self.rows = rows
 
-        self.cinder_client.get_table = mock.MagicMock(side_effect=get_table)
+                def __iter__(self):
+                    for elem in self.rows:
+                        yield elem
+
+                def keys(self):
+                    return self.cols
+
+            q = FakeProxyQuery(fake_cols.get(table, []),
+                               fake_rows.get(table, []))
+            return q
+
+        self.cinder_client.select_from_table = mock.MagicMock(
+            side_effect=select_from_table)
+
         filter_yaml = mock.Mock()
         filter_yaml.get_tenant.return_value = TN1['id']
         filter_yaml.get_volume_ids.return_value = []
@@ -183,6 +221,6 @@ class CinderDatabaseTestCase(test.TestCase):
         self.cinder_client.volume_filter = \
             filters.CinderFilters(self.cinder_client,
                                   filter_yaml=filter_yaml)
+        data = self.cinder_client.read_db_info()
         for table in expected_tables:
-            res = self.cinder_client.list_of_dicts_for_table(table)
-            self.assertEquals(res, expected_tables[table])
+            self.assertEquals(data[table], expected_tables[table])
