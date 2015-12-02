@@ -113,13 +113,49 @@ def _action(fake_src_data, fake_dst_data):
 
     fake_src_cloud = mock.Mock()
     fake_src_storage = mock.Mock()
-    fake_src_cloud.resources = {'storage': fake_src_storage}
+    fake_img_res = mock.Mock()
+    fake_src_cloud.resources = {
+        'storage': fake_src_storage,
+        'image': fake_img_res,
+    }
+    fake_src_images = {
+        'images':
+        {
+            'img1': {
+                'image': {
+                    'id': 'img1',
+                    'name': 'img1_name',
+                    'checksum': 'fake_checksum1',
+                }
+            }
+        }
+    }
+    fake_img_res.read_info = \
+        mock.Mock(return_value=fake_src_images)
 
     fake_dst_cloud = mock.Mock()
     fake_dst_storage = mock.Mock()
     fake_dst_storage.read_db_info = \
         mock.Mock(return_value=jsondate.dumps(fake_dst_data))
-    fake_dst_cloud.resources = {'storage': fake_dst_storage}
+    fake_dst_img_res = mock.Mock()
+    fake_dst_cloud.resources = {
+        'storage': fake_dst_storage,
+        'image': fake_dst_img_res,
+    }
+    fake_dst_images = {
+        'images':
+        {
+            'dst_img1': {
+                'image': {
+                    'id': 'dst_img1',
+                    'name': 'img1_name',
+                    'checksum': 'fake_checksum1',
+                }
+            }
+        }
+    }
+    fake_dst_img_res.read_info = \
+        mock.Mock(return_value=fake_dst_images)
 
     fake_init = {
         'src_cloud': fake_src_cloud,
@@ -145,7 +181,12 @@ def _action(fake_src_data, fake_dst_data):
         'dst_cinder@nfs2',
         'dst_cinder@nfs3',
     ]
+
     action.run_repeat_on_errors = mock.Mock()
+
+    def not_rsync(_, src, dst):
+        return action.run_rsync(src, dst)
+    action.rsync_if_enough_space = mock.MagicMock(side_effect=not_rsync)
 
     args = {
         cinder_database_manipulation.NAMESPACE_CINDER_CONST:
@@ -158,7 +199,7 @@ class WriteVolumesDbTest(test.TestCase):
     def test_run_no_volume_types(self):
         volumes = {
             "volumes": [
-                {"id": "vol-1"}
+                {"id": "vol-1"},
             ]
         }
         fake_dst_data = {
@@ -178,6 +219,53 @@ class WriteVolumesDbTest(test.TestCase):
         ]
         action.run_repeat_on_errors.assert_has_calls(calls)
         expected = {
+            "volume_metadata": [],
+            "volume_glance_metadata": [],
+            "volumes": [
+                {
+                    "status": "available",
+                    "volume_type_id": None,
+                    "attach_status": "detached",
+                    "provider_location": "/var/exports/dst0a",
+                    "host": "dst_cinder",
+                    "instance_uuid": None,
+                    "mountpoint": None,
+                    "id": "vol-1",
+                }
+            ]
+        }
+        self.assertEqual(action.data[SRC], expected)
+
+    def test_skip_existing_volumes(self):
+        volumes = {
+            "volumes": [
+                {"id": "vol-1"},
+                {"id": "vol-2"},
+                {"id": "vol-3"},
+            ]
+        }
+        fake_dst_data = {
+            "volumes": [
+                {"id": "vol-2"},
+                {"id": "vol-3"},
+            ]
+        }
+        action, args = _action(volumes, fake_dst_data)
+        action.run(**args)
+
+        calls = [
+            call(ANY,
+                 ('%s '
+                  '/var/lib/cinder/80a8c674d115b2a3c20f1e959bd1f20f/'
+                  'volume-vol-1'
+                  ' dst_user@dst_cinder:/var/lib/cinder/dstdir0a'
+                  ) % RSYNC_CMD
+                 ),
+        ]
+        action.run_repeat_on_errors.assert_has_calls(calls)
+        expected = {
+            "volume_metadata": [],
+            "volume_glance_metadata": [],
             "volumes": [
                 {
                     "status": "available",
@@ -265,6 +353,8 @@ class WriteVolumesDbTest(test.TestCase):
         action.run_repeat_on_errors.assert_has_calls(calls)
 
         expected = {
+            "volume_metadata": [],
+            "volume_glance_metadata": [],
             "volumes": [
                 {"volume_type_id": "nfs1_dst_id",
                  "host": "dst_cinder@nfs1",
@@ -326,6 +416,8 @@ class WriteVolumesDbTest(test.TestCase):
         action.run_repeat_on_errors.assert_has_calls(calls)
 
         expected = {
+            "volume_metadata": [],
+            "volume_glance_metadata": [],
             "volumes": [
                 {"volume_type_id": None,
                  "host": "dst_cinder",
@@ -337,5 +429,138 @@ class WriteVolumesDbTest(test.TestCase):
                  "provider_location": "/var/exports/dst2a"
                  }
             ]
+        }
+        self.assertEqual(action.data[SRC], expected)
+
+    def test_volume_glance_metadata(self):
+        fake_src_data = {
+            "volumes": [
+                {
+                    "id": "vol",
+                },
+            ],
+            "volume_metadata": [],
+            "volume_glance_metadata": [
+                {
+                    "id": 1,
+                    "volume_id": "vol",
+                    "key": "image_id",
+                    "value": "img1",
+                },
+            ],
+        }
+        fake_dst_data = {
+            "volumes": [],
+            "volume_types": [
+                {
+                    "id": "nfs_other_id",
+                    "name": "nfs_other",
+                },
+            ]
+        }
+
+        action, args = _action(fake_src_data, fake_dst_data)
+        action.run(**args)
+
+        calls = [
+            call(ANY, ('%s '
+                       '/var/lib/cinder/80a8c674d115b2a3c20f1e959bd1f20f/'
+                       'volume-vol '
+                       'dst_user@dst_cinder:/var/lib/cinder/dstdir2a'
+                       ) % RSYNC_CMD
+                 ),
+        ]
+        action.run_repeat_on_errors.assert_has_calls(calls)
+
+        expected = {
+            "volumes": [
+                {"volume_type_id": None,
+                 "host": "dst_cinder",
+                 "id": "vol",
+                 "status": "available",
+                 "attach_status": "detached",
+                 "instance_uuid": None,
+                 "mountpoint": None,
+                 "provider_location": "/var/exports/dst2a"
+                 }
+            ],
+            "volume_metadata": [],
+            "volume_glance_metadata": [
+                {
+                    "id": 1,
+                    "volume_id": "vol",
+                    "key": "image_id",
+                    "value": "dst_img1",
+                }
+            ]
+        }
+        self.assertEqual(action.data[SRC], expected)
+
+    def test_volume_metadata(self):
+        fake_src_data = {
+            "volumes": [
+                {
+                    "id": "vol",
+                },
+            ],
+            "volume_metadata": [
+                {
+                    "id": 1,
+                    "volume_id": "vol",
+                    "key": "test",
+                    "value": True,
+                },
+                {
+                    "id": 2,
+                    "volume_id": "vol",
+                    "key": "how_are_you_doing",
+                    "value": "Joe",
+                },
+                {
+                    "id": 3,
+                    "volume_id": "vol",
+                    "key": "It_always_sunny",
+                    "value": False,
+                },
+            ],
+            "volume_glance_metadata": [],
+        }
+        fake_dst_data = {
+            "volumes": [],
+            "volume_types": [
+                {
+                    "id": "nfs_other_id",
+                    "name": "nfs_other",
+                },
+            ]
+        }
+
+        action, args = _action(fake_src_data, fake_dst_data)
+        action.run(**args)
+
+        calls = [
+            call(ANY, ('%s '
+                       '/var/lib/cinder/80a8c674d115b2a3c20f1e959bd1f20f/'
+                       'volume-vol '
+                       'dst_user@dst_cinder:/var/lib/cinder/dstdir2a'
+                       ) % RSYNC_CMD
+                 ),
+        ]
+        action.run_repeat_on_errors.assert_has_calls(calls)
+
+        expected = {
+            "volumes": [
+                {"volume_type_id": None,
+                 "host": "dst_cinder",
+                 "id": "vol",
+                 "status": "available",
+                 "attach_status": "detached",
+                 "instance_uuid": None,
+                 "mountpoint": None,
+                 "provider_location": "/var/exports/dst2a"
+                 }
+            ],
+            "volume_metadata": fake_src_data['volume_metadata'],
+            "volume_glance_metadata": [],
         }
         self.assertEqual(action.data[SRC], expected)
