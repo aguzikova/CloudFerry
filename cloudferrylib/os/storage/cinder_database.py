@@ -140,6 +140,14 @@ class CinderStorage(cinder_storage.CinderStorage):
         self.hosts = None
         self.host_counter = 0
         self.identity_client = cloud.resources['identity']
+        self.tn_id_to_name = {
+            tn.id: tn.name
+            for tn in self.identity_client.get_tenants_list()
+        }
+        self.user_id_to_name = {
+            user.id: user.name
+            for user in self.identity_client.get_users_list()
+        }
         # FIXME This class holds logic for all these tables. These must be
         # split into separate classes
         self.list_of_tables = [
@@ -187,8 +195,8 @@ class CinderStorage(cinder_storage.CinderStorage):
 
     def _check_update_tenant_names(self, entry, tenant_id_key):
         tenant_id = entry[tenant_id_key]
-        tenant_name = self.identity_client.try_get_tenant_name_by_id(
-            tenant_id, self.config.cloud.tenant)
+        tenant_name = self.tn_id_to_name.get(tenant_id,
+                                             self.config.cloud.tenant)
         if self.table in IGNORED_TBL_LIST:
             tmp_tenant_id = self.identity_client.get_tenant_id_by_name(
                 tenant_name)
@@ -269,8 +277,9 @@ class CinderStorage(cinder_storage.CinderStorage):
             result = [e for e in result if 'error' not in e[STATUS]]
         if USER_ID in column_names:
             for entry in result:
-                entry[USER_ID] = self.identity_client.try_get_username_by_id(
-                    entry[USER_ID], default=self.config.cloud.user)
+                entry[USER_ID] = \
+                    self.user_id_to_name.get(entry[USER_ID],
+                                             self.config.cloud.user)
         return result
 
     def read_db_info(self, **_):
@@ -350,6 +359,6 @@ class CinderStorage(cinder_storage.CinderStorage):
                 entry[USER_ID] = user.id
 
     def deploy(self, data):
-        """ Reads serialized data and writes it to database """
+        """ Read serialized data and writes it to database. """
         for table_name, table_data in jsondate.loads(data).items():
             self.deploy_data_to_table(table_name, table_data)

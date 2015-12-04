@@ -46,9 +46,11 @@ FAKE_ENTRY_1 = {'id': 'fake_volume_id_1',
 
 class CinderNetAppTestCase(test.TestCase):
     def setUp(self):
-        super(CinderNetAppTestCase, self).setUp()
+        test.TestCase.setUp(self)
 
         self.identity_mock = mock.Mock()
+        self.identity_mock.get_tenants_list.return_value = []
+        self.identity_mock.get_users_list.return_value = []
 
         self.fake_cloud = mock.Mock()
         self.fake_cloud.position = 'src'

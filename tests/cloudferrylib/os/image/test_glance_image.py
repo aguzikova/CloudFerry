@@ -41,10 +41,16 @@ class FakeUser(object):
         self.name = 'fake_user_name'
 
 
+class FakeTenant(object):
+    def __init__(self, uuid, name):
+        self.id = uuid
+        self.name = name
+
+
 class GlanceImageTestCase(test.TestCase):
 
     def setUp(self):
-        super(GlanceImageTestCase, self).setUp()
+        test.TestCase.setUp(self)
 
         self.glance_mock_client = mock.MagicMock()
         self.glance_mock_client().images.data()._resp = 'fake_resp_1'
@@ -64,6 +70,14 @@ class GlanceImageTestCase(test.TestCase):
             return_value="fake_tenant_name")
         self.identity_mock.keystone_client.users.list = mock.Mock(
             return_value=[])
+        self.identity_mock.get_tenants_list.return_value = [
+        ]
+        self.identity_mock.get_tenants_list.return_value = [
+            FakeTenant(t['id'], t['name'])
+            for t in [
+                {'id': 'fake_tenant_id', 'name': 'fake_tenant_name'}
+            ]
+        ]
         self.image_mock = mock.Mock()
 
         self.fake_cloud = mock.Mock()

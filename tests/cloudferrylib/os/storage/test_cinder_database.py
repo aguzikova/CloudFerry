@@ -24,10 +24,10 @@ from cloudferrylib.os.storage import filters
 from cloudferrylib.utils import utils
 from tests import test
 
-TENANTS = TN1, TN2 = (
+TENANTS = TN1, TN2 = [
     {'id': 'tn1_id', 'name': 'tn1'},
     {'id': 'tn2_id', 'name': 'tn2'},
-)
+]
 
 
 def tn_id_by_name(name):
@@ -108,6 +108,18 @@ class CinderDatabaseTestCase(test.TestCase):
         self.identity_mock = mock.Mock()
         self.identity_mock.try_get_tenant_name_by_id = tn_name_by_id
         self.identity_mock.get_tenant_id_by_name = tn_id_by_name
+
+        class FakeTenantObj(object):
+            def __init__(self, uuid, name):
+                self.id = uuid
+                self.name = name
+
+        self.identity_mock.get_tenants_list.return_value = [
+            FakeTenantObj(t['id'], t['name'])
+            for t in TENANTS
+        ]
+        self.identity_mock.get_users_list.return_value = []
+
         self.compute_mock = mock.Mock()
 
         self.fake_cloud = mock.Mock()
@@ -117,6 +129,7 @@ class CinderDatabaseTestCase(test.TestCase):
                                          compute=self.compute_mock)
         self.cinder_client = cinder_database.CinderStorage(FAKE_CONFIG,
                                                            self.fake_cloud)
+        self.cinder_client.user_id_to_name = {}
         self.mock_client().volumes.get.return_value = _volume()
 
     def test_volume_invalid_statuses(self):

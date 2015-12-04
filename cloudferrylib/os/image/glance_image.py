@@ -41,16 +41,17 @@ LOG = utl.get_log(__name__)
 
 class GlanceImage(image.Image):
 
-    """
-    The main class for working with Openstack Glance Image Service.
-
-    """
+    """ The main class for working with Openstack Glance Image Service. """
 
     def __init__(self, config, cloud):
         self.config = config
         self.host = config.cloud.host
         self.cloud = cloud
         self.identity_client = cloud.resources['identity']
+        self.tn_id_to_name = {
+            tn.id: tn.name
+            for tn in self.identity_client.get_tenants_list()
+        }
         self.filter_tenant_id = None
         self.filter_image = []
         # get mysql settings
@@ -171,7 +172,6 @@ class GlanceImage(image.Image):
         """
 
         resource = cloud.resources[utl.IMAGE_RESOURCE]
-        keystone = cloud.resources["identity"]
         gl_image = {
             k: w for k, w in glance_image.to_dict().items(
             ) if k in CREATE_PARAMS}
@@ -181,8 +181,12 @@ class GlanceImage(image.Image):
         # at this point we write name of owner of this tenant
         # to map it to different tenant id on destination
         gl_image.update(
-            {'owner_name': keystone.try_get_tenant_name_by_id(
-                glance_image.owner, default=cloud.cloud_config.cloud.tenant)})
+            {
+                'owner_name':
+                self.tn_id_to_name.get(glance_image.owner,
+                                       cloud.cloud_config.cloud.tenant),
+            }
+        )
         gl_image.update({
             "members": self.get_members({gl_image['id']: {'image': gl_image}})
         })
@@ -214,8 +218,8 @@ class GlanceImage(image.Image):
                 if img not in result:
                     result[img] = {}
 
-                tenant_name = self.identity_client.try_get_tenant_name_by_id(
-                    entry.member_id, default=self.config.cloud.tenant)
+                tenant_name = self.tn_id_to_name.get(entry.member_id,
+                                                     self.config.cloud.tenant)
                 result[img][tenant_name] = entry.can_share
         return result
 
@@ -240,6 +244,7 @@ class GlanceImage(image.Image):
         """Get info about images or specified image.
 
         :returns: Dictionary containing images data
+
         """
 
         info = {'images': {}}
@@ -308,14 +313,14 @@ class GlanceImage(image.Image):
         created_images = []
         delete_container_format, delete_disk_format = [], []
         empty_image_list = {}
-        keystone = self.cloud.resources["identity"]
 
         # List for obsolete/broken images IDs, that will not be migrated
         obsolete_images_ids_list = []
         dst_images = {}
         for dst_image in self.get_image_list():
-            tenant_name = keystone.try_get_tenant_name_by_id(
-                dst_image.owner, default=self.cloud.cloud_config.cloud.tenant)
+            tenant_name = \
+                self.tn_id_to_name(dst_image.owner,
+                                   self.cloud.cloud_config.cloud.tenant)
             image_key = (dst_image.name, tenant_name, dst_image.checksum,
                          dst_image.is_public)
             dst_images[image_key] = dst_image
